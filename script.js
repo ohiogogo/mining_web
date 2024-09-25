@@ -1,19 +1,11 @@
-let workers = [];
+let worker;
 let isPaused = false;
-let workerCount = 4;  // 可以根据设备性能调整线程数量
-let workerStatus = new Array(workerCount).fill(false);
 let hashCount = 0;
 let currentNumberElement;
 let resultElement;
 let inputText, difficulty, initial_r;
 
 function startCalculation() {
-    if (isPaused) {
-        isPaused = false;
-        workers.forEach(worker => worker.postMessage({ inputText, difficulty }));
-        return;
-    }
-
     inputText = document.getElementById("inputText").value;
     difficulty = parseInt(document.getElementById("inputNumber").value);
     initial_r = parseInt(document.getElementById("initial_r").value);
@@ -27,67 +19,52 @@ function startCalculation() {
     resultElement.innerHTML = "";
     currentNumberElement = document.getElementById("currentNumber");
 
-    // 启动多个Web Workers
-    const target = BigInt(2) ** BigInt(256 - difficulty);
-    const rangeSize = 1000000;  // 每个 Worker 负责处理的 r 值范围
+    // 启动 Web Worker
+    worker = new Worker('worker.js');
+    worker.postMessage({
+        inputText: inputText,
+        difficulty: difficulty,
+        startR: initial_r,
+        rangeSize: 1000000,
+        target: BigInt(2) ** BigInt(256 - difficulty)
+    });
 
-    for (let i = 0; i < workerCount; i++) {
-        const worker = new Worker('worker.js');
-        workers.push(worker);
+    worker.onmessage = function(e) {
+        if (e.data.progress) {
+            // 更新进度和速度
+            currentNumberElement.innerHTML = `
+                当前正在检查的数字: ${e.data.r}<br>
+                每秒哈希次数: ${e.data.speed}<br>
+                已计算哈希次数: ${e.data.hashCount}<br>
+                已经过的时间: ${e.data.elapsedTime} 秒
+            `;
+        }
 
-        // 为每个 worker 设置不同的起点
-        const startR = initial_r + i * rangeSize;
-
-        worker.postMessage({
-            inputText,
-            difficulty,
-            startR,
-            rangeSize,
-            target
-        });
-
-        worker.onmessage = function(e) {
-            const { found, r, hash, hashCount, workerIndex } = e.data;
-            if (found) {
-                workers.forEach(w => w.terminate());  // 停止所有 worker
-                resultElement.innerHTML = `
-                    <span class="caption">找到结果，r = </span><span class="result">${r}</span><br>
-                    <span class="caption">哈希值: </span><span class="result">${hash}</span><br>
-                    <span class="caption">尝试次数: </span><span class="result">${hashCount}</span><br>
-                `;
-                currentNumberElement.innerHTML = "";
-            } else {
-                currentNumberElement.innerHTML = `Worker ${workerIndex}: 当前正在检查的数字: ${r}`;
-            }
-        };
-    }
+        if (e.data.found) {
+            resultElement.innerHTML = `
+                找到结果，r = ${e.data.r}<br>
+                哈希值: ${e.data.hash}<br>
+                总哈希次数: ${e.data.hashCount}
+            `;
+            currentNumberElement.innerHTML = ""; // 清除进度
+            worker.terminate(); // 任务完成后终止 worker
+        }
+    };
 }
 
 function pauseCalculation() {
-    if (workers.length > 0) {
+    if (worker) {
         isPaused = true;
-        workers.forEach(worker => worker.terminate()); // 暂停计算时终止所有 worker
+        worker.terminate(); // 暂停计算时终止 worker
         resultElement.innerHTML += "<br><span class='caption'>计算已暂停</span>";
     }
 }
 
 function stopCalculation() {
-    if (workers.length > 0) {
-        workers.forEach(worker => worker.terminate()); // 完全停止计算
-        workers = [];
+    if (worker) {
+        worker.terminate(); // 完全停止计算
+        worker = null;
         resultElement.innerHTML += "<br><span class='caption'>计算已终止</span>";
         currentNumberElement.innerHTML = "";
     }
-}
-
-function updateExpectedAttempts() {
-    const inputNumber = parseInt(document.getElementById("inputNumber").value);
-    const expectedAttemptsElement = document.getElementById("expectedAttempts");
-    const expectedAttempts = 2 ** inputNumber;
-    expectedAttemptsElement.innerHTML = `
-        <span class="caption">预期尝试次数: </span><span class="result">${expectedAttempts.toLocaleString()}</span>`;
-}
-
-function clearResult() {
-    document.getElementById("result").innerHTML = "";
 }

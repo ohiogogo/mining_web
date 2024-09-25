@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SHA256 Hash Calculator with Web Workers and asmCrypto</title>
+    <title>SHA256 Hash Calculator with WebCrypto</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -32,7 +32,7 @@
         </div>
         <p id="currentNumber"></p>
         
-        <p class="info">说明：此工具使用Web Workers和asmCrypto.js实现多线程高效计算。</p>
+        <p class="info">说明：此工具使用WebCrypto API进行哈希计算，实时显示进度和每秒哈希次数。</p>
     </div>
 
     <script src="script.js"></script>
