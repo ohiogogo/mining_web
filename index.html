@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SHA256 Hash Calculator</title>
+    <title>SHA256 Hash Calculator with Web Workers and asmCrypto</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -32,10 +32,9 @@
         </div>
         <p id="currentNumber"></p>
         
-        <p class="info">说明：此工具可以帮助您计算SHA256哈希值，您可以输入不同的难度D，并从指定的数字开始进行计算。请根据您的需求选择开始、暂停或终止操作。</p>
+        <p class="info">说明：此工具使用Web Workers和asmCrypto.js实现多线程高效计算。</p>
     </div>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
     <script src="script.js"></script>
 </body>
 </html>

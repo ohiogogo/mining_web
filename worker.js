@@ -1,13 +1,15 @@
-importScripts('https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js');
+// 引入 asmCrypto
+importScripts('https://cdnjs.cloudflare.com/ajax/libs/asmCrypto.js/2.3.2/asmcrypto.all.min.js');
 
 onmessage = function(e) {
-    const { inputText, difficulty, startR } = e.data;
+    const { inputText, difficulty, startR, rangeSize, target } = e.data;
     let r = startR;
-    const target = BigInt(2) ** BigInt(256 - difficulty);
+    const endR = startR + rangeSize;
     let hashCount = 0;
 
-    while (true) {
-        const hash = CryptoJS.SHA256(inputText + r).toString(CryptoJS.enc.Hex);
+    while (r < endR) {
+        // 使用 asmCrypto 进行 SHA-256 计算
+        const hash = asmCrypto.SHA256.hex(inputText + r);
         hashCount++;
         const hashBigInt = BigInt("0x" + hash);
 
@@ -22,4 +24,11 @@ onmessage = function(e) {
         }
         r++;
     }
+
+    // 如果没有找到合适的 r 值
+    postMessage({
+        found: false,
+        r: endR,
+        hashCount: hashCount
+    });
 };

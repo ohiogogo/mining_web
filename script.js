@@ -1,133 +1,91 @@
-let r;
-let baseR;
-let isCalculating = false;
+let workers = [];
 let isPaused = false;
-let hashCount;
-let startTime;
-let hashBigInt;
-let target;
-let inputNumber; // difficulty value
-const updateInterval = 1000;
+let workerCount = 4;  // 可以根据设备性能调整线程数量
+let workerStatus = new Array(workerCount).fill(false);
+let hashCount = 0;
 let currentNumberElement;
 let resultElement;
-
-function sha256(message) {
-    return CryptoJS.SHA256(message).toString(CryptoJS.enc.Hex);
-}
+let inputText, difficulty, initial_r;
 
 function startCalculation() {
     if (isPaused) {
-        isPaused = false; // Resume calculation from the last state
-        findR(document.getElementById("inputText").value);
+        isPaused = false;
+        workers.forEach(worker => worker.postMessage({ inputText, difficulty }));
         return;
     }
 
-    const inputText = document.getElementById("inputText").value;
-    inputNumber = parseInt(document.getElementById("inputNumber").value);
-    const initial_r = parseInt(document.getElementById("initial_r").value);
+    inputText = document.getElementById("inputText").value;
+    difficulty = parseInt(document.getElementById("inputNumber").value);
+    initial_r = parseInt(document.getElementById("initial_r").value);
     resultElement = document.getElementById("result");
 
-    if (!inputText || isNaN(inputNumber) || inputNumber < 0 || inputNumber > 256) {
-        resultElement.innerHTML = "Please enter a valid block content and difficulty between 0 and 256.";
+    if (!inputText || isNaN(difficulty) || difficulty < 0 || difficulty > 256) {
+        resultElement.innerHTML = "请输入有效的内容和难度（0-256之间）";
         return;
     }
 
     resultElement.innerHTML = "";
-    r = initial_r;
-    baseR = initial_r;
-    isCalculating = true;
-    hashCount = 0;
-    startTime = new Date().getTime();
-    hashBigInt = BigInt("0x" + sha256(inputText + r));
-    target = BigInt(2) ** BigInt(256 - inputNumber);
-
     currentNumberElement = document.getElementById("currentNumber");
-    updateCalculationProgress(inputText);
-    findR(inputText);
-}
 
-function updateCalculationProgress(inputText) {
-    if (isCalculating) {
-        const currentTime = new Date().getTime();
-        const elapsedTime = (currentTime - startTime) / 1000;
-        let speed = 0;
-        let remainingTime = 0;
+    // 启动多个Web Workers
+    const target = BigInt(2) ** BigInt(256 - difficulty);
+    const rangeSize = 1000000;  // 每个 Worker 负责处理的 r 值范围
 
-        if (elapsedTime > 0) {
-            speed = hashCount / elapsedTime;
-            const expectedAttempts = 2 ** inputNumber;
-            const remainingAttempts = expectedAttempts - hashCount;
-            remainingTime = remainingAttempts > 0 ? remainingAttempts / speed : 0;
-        }
+    for (let i = 0; i < workerCount; i++) {
+        const worker = new Worker('worker.js');
+        workers.push(worker);
 
-        currentNumberElement.innerHTML = `
-          <span class="caption">Current number in inspection:</span> <span class="result">${r}</span><br>
-          <span class="caption">Elapsed Time:</span> <span class="result">${elapsedTime.toFixed(0)} seconds</span><br>
-          <span class="caption">Speed:</span> <span class="result">${speed.toFixed(2)} hashes per second</span><br>
-          <span class="caption">Estimated Time Remaining:</span> <span class="result">${remainingTime.toFixed(2)} seconds</span>`;
+        // 为每个 worker 设置不同的起点
+        const startR = initial_r + i * rangeSize;
 
-        setTimeout(() => updateCalculationProgress(inputText), updateInterval);
+        worker.postMessage({
+            inputText,
+            difficulty,
+            startR,
+            rangeSize,
+            target
+        });
+
+        worker.onmessage = function(e) {
+            const { found, r, hash, hashCount, workerIndex } = e.data;
+            if (found) {
+                workers.forEach(w => w.terminate());  // 停止所有 worker
+                resultElement.innerHTML = `
+                    <span class="caption">找到结果，r = </span><span class="result">${r}</span><br>
+                    <span class="caption">哈希值: </span><span class="result">${hash}</span><br>
+                    <span class="caption">尝试次数: </span><span class="result">${hashCount}</span><br>
+                `;
+                currentNumberElement.innerHTML = "";
+            } else {
+                currentNumberElement.innerHTML = `Worker ${workerIndex}: 当前正在检查的数字: ${r}`;
+            }
+        };
     }
 }
 
-function findR(inputText) {
-    if (!isCalculating || isPaused) {
-        return;
-    }
-
-    for (let i = 0; i < updateInterval; i++) {
-        const hash = sha256(inputText + r.toString());
-        hashCount++;
-        hashBigInt = BigInt("0x" + hash);
-
-        if (hashBigInt < target) {
-            isCalculating = false;
-            const elapsedTime = (new Date().getTime() - startTime) / 1000;
-            const speed = hashCount / elapsedTime;
-            const inputWithR = inputText + (r + baseR);
-            resultElement.innerHTML = `
-                <span class="caption">Found! The number r is:</span> <span class="result">${r}</span><br>
-                <span class="caption">Input text with r:</span> <span class="result">${inputWithR}</span><br>
-                <span class="caption">SHA256 Hash Value:</span> <span class="result">${hash}</span><br>
-                <span class="caption">Elapsed Time:</span> <span class="result">${elapsedTime.toFixed(2)} seconds</span><br>
-                <span class="caption">Speed:</span><span class="result">${speed.toFixed(2)} hashes per second</span>`;
-            currentNumberElement.innerHTML = "";
-            break;
-        }
-        r++;
-    }
-
-    if (isCalculating) {
-        setTimeout(() => findR(inputText), 0);
-    }
-}
-
-// Pause functionality
 function pauseCalculation() {
-    if (isCalculating) {
+    if (workers.length > 0) {
         isPaused = true;
-        isCalculating = false;
-        resultElement.innerHTML += "<br><span class='caption'>Paused</span>";
+        workers.forEach(worker => worker.terminate()); // 暂停计算时终止所有 worker
+        resultElement.innerHTML += "<br><span class='caption'>计算已暂停</span>";
     }
 }
 
-// Stop functionality
 function stopCalculation() {
-    if (isCalculating || isPaused) {
-        isCalculating = false;
-        isPaused = false;
-        resultElement.innerHTML += "<br><span class='caption'>Stopped</span>";
+    if (workers.length > 0) {
+        workers.forEach(worker => worker.terminate()); // 完全停止计算
+        workers = [];
+        resultElement.innerHTML += "<br><span class='caption'>计算已终止</span>";
         currentNumberElement.innerHTML = "";
     }
 }
 
 function updateExpectedAttempts() {
-    inputNumber = parseInt(document.getElementById("inputNumber").value);
+    const inputNumber = parseInt(document.getElementById("inputNumber").value);
     const expectedAttemptsElement = document.getElementById("expectedAttempts");
     const expectedAttempts = 2 ** inputNumber;
-
     expectedAttemptsElement.innerHTML = `
-        <span class="caption">Expected Attempts:</span> <span class="result">${expectedAttempts.toLocaleString()}</span>`;
+        <span class="caption">预期尝试次数: </span><span class="result">${expectedAttempts.toLocaleString()}</span>`;
 }
 
 function clearResult() {
