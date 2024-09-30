@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SHA256 Hash Calculator</title>
+    <style>
+    body {
+        font-family: Arial, sans-serif;
+        text-align: center;
+        max-width: 800px;
+        margin: 0 auto;
+        padding: 20px;
+    }
+
+    label {
+        display: block;
+        margin-bottom: 5px;
+    }
+
+    input[type="text"], input[type="number"] {
+        padding: 8px;
+        margin-bottom: 10px;
+        width: 100%;
+        box-sizing: border-box;
+    }
+
+    button {
+        padding: 10px 20px;
+        background-color: #4CAF50;
+        color: white;
+        border: none;
+        cursor: pointer;
+        width: 100%;
+    }
+    .caption {
+      font-weight: bold;
+      color: #333;
+    }
+
+    .result {
+      font-weight: normal;
+      color: #4CAF50;
+    }
+
+    button:hover {
+        background-color: #45a049;
+    }
+
+    #progress {
+        width: 100%;
+        height: 20px;
+        background-color: #f3f3f3;
+        position: relative;
+        margin-bottom: 10px;
+    }
+
+    #progress span {
+        position: absolute;
+        height: 100%;
+        background-color: #4CAF50;
+    }
+
+    /* Make buttons smaller on small screens */
+    @media (max-width: 767px) {
+        button {
+            padding: 8px 16px;
+            font-size: 14px;
+        }
+    }
+</style>
+
+</head>
+<body>
+    <h3>SHA256 Hash Calculator</h3>
+    <label for="inputText">数据T:</label>
+    <input type="text" id="inputText" oninput="clearResult()" value="I love SWUFE. SWUFE is the best!">
+    <label for="inputNumber">难度D，即生成的hash值（二进制）需前D位为0:</label>
+    <input type="number" id="inputNumber" onchange="clearResult(); updateExpectedAttempts();" value="16">
+    <label for="intial_r">搜索起点:</label>
+    <input type="number" id="initial_r"  value="0">
+    <label id="expectedAttempts">Expected Attempts : Unknown</label>
+    <button onclick="startCalculation()">开始计算</button>
+    <p id="result"></p>
+    <div id="progress">
+        <span></span>
+    </div>
+    <p id="currentNumber"></p>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+    <script>
+    document.addEventListener("DOMContentLoaded", updateExpectedAttempts);
+
+
+    function sha256(message) {
+      return CryptoJS.SHA256(message).toString(CryptoJS.enc.Hex);
+    }
+
+    let r;
+    let baseR;
+    let isCalculating;
+    let hashCount;
+    let startTime;
+    let hashBigInt;
+    let target;
+    const updateInterval = 1000;
+    let currentNumberElement;
+    let resultElement;
+
+    function startCalculation() {
+      const inputText = document.getElementById("inputText").value;
+      const inputNumber = parseInt(document.getElementById("inputNumber").value);
+      const initial_r= parseInt(document.getElementById("initial_r").value);
+      resultElement = document.getElementById("result");
+
+      if (!inputText || isNaN(inputNumber) || inputNumber < 0 || inputNumber > 256) {
+        resultElement.innerHTML =
+          "Please enter a valid block content and difficulty between 0 and 256.";
+        return;
+      }
+
+      resultElement.innerHTML = "";
+      r = initial_r;
+      baseR = 0;
+      isCalculating = true;
+      hashCount = 0;
+      startTime = new Date().getTime();
+      hashBigInt = BigInt("0x" + sha256(inputText + r));
+      target = BigInt(2) ** BigInt(256 - inputNumber);
+
+      currentNumberElement = document.getElementById("currentNumber");
+      updateCalculationProgress(inputText);
+      findR(inputText);
+    }
+
+    function updateCalculationProgress(inputText) {
+      if (isCalculating) {
+        const currentTime = new Date().getTime();
+        const elapsedTime = (currentTime - startTime) / 1000;
+        let speed = 0;
+        let remainingTime = 0;
+
+        if (elapsedTime > 0) {
+          speed = hashCount / elapsedTime;
+          const expectedAttempts = 2 ** inputNumber;
+          const remainingAttempts = expectedAttempts - hashCount;
+          remainingTime = remainingAttempts > 0 ? remainingAttempts / speed : 0;
+        }
+
+        currentNumberElement.innerHTML = `
+          <span class="caption">Current number in inspection:</span> <span class="result">${r} - ${r + updateInterval - 1}</span><br>
+          <span class="caption">Elapsed Time:</span> <span class="result">${elapsedTime.toFixed(0)} seconds</span><br>
+          <span class="caption">Speed:</span> <span class="result">${speed.toFixed(2)} hashes per second</span><br>
+          <span class="caption">Estimated Time Remaining:</span> <span class="result">${remainingTime.toFixed(2)} seconds</span>`;
+
+        setTimeout(() => updateCalculationProgress(inputText), updateInterval);
+      }
+    }
+
+    function findR(inputText) {
+      if (!isCalculating) {
+        return;
+      }
+
+      for (let i = 0; i < updateInterval; i++) {
+        const hash = sha256(inputText + r.toString());
+        hashCount++;
+        hashBigInt = BigInt("0x" + hash);
+
+        if (hashBigInt < target) {
+          isCalculating = false;
+          const elapsedTime = (new Date().getTime() - startTime) / 1000;
+          const speed = hashCount / elapsedTime;
+          const inputWithR = inputText + (r + baseR);
+          resultElement.innerHTML = `
+            <span class="caption">Found! The number r is:</span> <span class="result">${r + baseR}</span><br>
+            <span class="caption">Input text with r:</span> <span class="result">${inputWithR}</span><br>
+            <span class="caption">SHA256 Hash Value:</span> <span class="result">${hash}</span><br>
+            <span class="caption">Elapsed Time:</span> <span class="result">${elapsedTime.toFixed(2)} seconds</span><br>
+            <span class="caption">Speed:</span><span class="result">${speed.toFixed(2)} hashes per second</span>`;
+          currentNumberElement.innerHTML = "";
+          break;
+        }
+        r++;
+      }
+
+      if (isCalculating) {
+        baseR += updateInterval;
+        r = 0;
+        setTimeout(() => findR(inputText), 0);
+      }
+    }
+
+
+    function updateExpectedAttempts() {
+      const inputNumber = parseInt(document.getElementById("inputNumber").value);
+      const expectedAttemptsElement = document.getElementById("expectedAttempts");
+      const expectedAttempts = 2 ** inputNumber;
+
+      expectedAttemptsElement.innerHTML = `
+        <span class="caption">Expected Attempts:</span> <span class="result">${expectedAttempts.toLocaleString()}</span>`;
+    }
+
+    </script>
